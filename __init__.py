@@ -22,8 +22,9 @@ class OT_AutoHideTransform(bpy.types.Operator):
     )
 
     # Internal state variables
-    _initial_overlay_state = True
     _space_data = None
+    _restore_data = {} # Dictionary to store {attribute_name: original_value}
+    _restore_global = False # Flag to know if we restored global overlay or specific props
 
     def execute_transform(self):
         """Helper to call the native transform operator."""
@@ -44,7 +45,19 @@ class OT_AutoHideTransform(bpy.types.Operator):
         if event.type in finish_events and event.value == 'RELEASE':
             # Restore the overlay state
             if self._space_data:
-                self._space_data.overlay.show_overlays = self._initial_overlay_state
+                overlay = self._space_data.overlay
+                
+                # Restore Global State
+                if self._restore_global:
+                    if "show_overlays" in self._restore_data:
+                        overlay.show_overlays = self._restore_data["show_overlays"]
+                
+                # Restore Custom States
+                else:
+                    for attr, val in self._restore_data.items():
+                        # Safety check: ensure attribute still exists
+                        if hasattr(overlay, attr):
+                            setattr(overlay, attr, val)
             
             return {'FINISHED', 'PASS_THROUGH'}
         
@@ -52,7 +65,8 @@ class OT_AutoHideTransform(bpy.types.Operator):
 
     def invoke(self, context, event):
         # 1. Check if the feature is enabled in the UI
-        if not context.scene.auto_hide_overlays:
+        scene = context.scene
+        if not scene.auto_hide_overlays:
             # Feature is disabled: Just run the normal transform and exit
             self.execute_transform()
             return {'FINISHED'}
@@ -60,10 +74,37 @@ class OT_AutoHideTransform(bpy.types.Operator):
         # 2. Ensure we are in a 3D View
         if context.space_data.type == 'VIEW_3D':
             self._space_data = context.space_data
-            self._initial_overlay_state = self._space_data.overlay.show_overlays
+            self._restore_data = {}
+            overlay = self._space_data.overlay
             
-            # 3. Hide Overlays
-            self._space_data.overlay.show_overlays = False
+            # 3. Determine Hiding Strategy
+            if scene.auto_hide_strategy == 'ALL':
+                self._restore_global = True
+                self._restore_data["show_overlays"] = overlay.show_overlays
+                overlay.show_overlays = False
+                
+            elif scene.auto_hide_strategy == 'CUSTOM':
+                self._restore_global = False
+                
+                # Define mapping: (Scene Property, Overlay Attribute)
+                properties_to_check = [
+                    ("auto_hide_bones", "show_bones"),
+                    ("auto_hide_wireframes", "show_wireframes"),
+                    ("auto_hide_extras", "show_extras"),
+                    ("auto_hide_text", "show_text"),
+                    ("auto_hide_cursor", "show_cursor"),
+                    ("auto_hide_relationship_lines", "show_relationship_lines"),
+                ]
+                
+                for scene_prop, overlay_attr in properties_to_check:
+                    # If user wants to hide this specific element
+                    if getattr(scene, scene_prop, False):
+                        # Check if the overlay has this attribute (safety for different Blender versions/contexts)
+                        if hasattr(overlay, overlay_attr):
+                            # Store current state
+                            self._restore_data[overlay_attr] = getattr(overlay, overlay_attr)
+                            # Turn it off
+                            setattr(overlay, overlay_attr, False)
         else:
             self.report({'WARNING'}, "Not in View3D")
             return {'CANCELLED'}
@@ -81,9 +122,31 @@ class OT_AutoHideTransform(bpy.types.Operator):
 
 def draw_overlay_menu(self, context):
     layout = self.layout
+    scene = context.scene
+    
     # Add a separator and our property at the bottom of the Overlay popover
     layout.separator()
-    layout.prop(context.scene, "auto_hide_overlays", text="Auto Hide During Transform")
+    
+    # Main Toggle
+    row = layout.row()
+    row.prop(context.scene, "auto_hide_overlays", text="Auto Hide During Transform")
+    
+    # Granular Options (only if enabled)
+    if scene.auto_hide_overlays:
+        col = layout.column(align=True)
+        # Strategy Selector
+        col.row().prop(scene, "auto_hide_strategy", expand=True)
+        
+        # Custom Checkboxes
+        if scene.auto_hide_strategy == 'CUSTOM':
+            box = col.box()
+            col_box = box.column(align=True)
+            col_box.prop(scene, "auto_hide_bones", text="Bones")
+            col_box.prop(scene, "auto_hide_wireframes", text="Wireframes")
+            col_box.prop(scene, "auto_hide_extras", text="Extras")
+            col_box.prop(scene, "auto_hide_relationship_lines", text="Relationships")
+            col_box.prop(scene, "auto_hide_text", text="Text Info")
+            col_box.prop(scene, "auto_hide_cursor", text="3D Cursor")
 
 # ------------------------------------------------------------------------
 #    Keymap Registration
@@ -132,15 +195,33 @@ def unregister_keymaps():
 def register():
     bpy.utils.register_class(OT_AutoHideTransform)
     
-    # Register Property
+    # 1. Main Toggle
     bpy.types.Scene.auto_hide_overlays = bpy.props.BoolProperty(
-        name="Auto Hide Overlays",
+        name="Auto Hide During Transform",
         description="Hide viewport overlays while transforming (G/R/S)",
-        default=True
+        default=False
     )
     
+    # 2. Strategy Enum
+    bpy.types.Scene.auto_hide_strategy = bpy.props.EnumProperty(
+        name="Strategy",
+        description="Choose what to hide",
+        items=[
+            ('ALL', "Hide All", "Hide all overlays globally"),
+            ('CUSTOM', "Custom", "Hide specific overlay elements"),
+        ],
+        default='ALL'
+    )
+    
+    # 3. Custom Granular Properties
+    bpy.types.Scene.auto_hide_bones = bpy.props.BoolProperty(name="Hide Bones", default=True)
+    bpy.types.Scene.auto_hide_wireframes = bpy.props.BoolProperty(name="Hide Wireframes", default=True)
+    bpy.types.Scene.auto_hide_extras = bpy.props.BoolProperty(name="Hide Extras", default=True)
+    bpy.types.Scene.auto_hide_text = bpy.props.BoolProperty(name="Hide Text", default=False)
+    bpy.types.Scene.auto_hide_cursor = bpy.props.BoolProperty(name="Hide Cursor", default=False)
+    bpy.types.Scene.auto_hide_relationship_lines = bpy.props.BoolProperty(name="Hide Relationships", default=False)
+    
     # Add UI to Overlay Menu
-    # We append to VIEW3D_PT_overlay so it shows up in the popover
     bpy.types.VIEW3D_PT_overlay.append(draw_overlay_menu)
     
     register_keymaps()
@@ -151,7 +232,16 @@ def unregister():
     # Remove UI
     bpy.types.VIEW3D_PT_overlay.remove(draw_overlay_menu)
     
+    # Remove Properties
     del bpy.types.Scene.auto_hide_overlays
+    del bpy.types.Scene.auto_hide_strategy
+    del bpy.types.Scene.auto_hide_bones
+    del bpy.types.Scene.auto_hide_wireframes
+    del bpy.types.Scene.auto_hide_extras
+    del bpy.types.Scene.auto_hide_text
+    del bpy.types.Scene.auto_hide_cursor
+    del bpy.types.Scene.auto_hide_relationship_lines
+    
     bpy.utils.unregister_class(OT_AutoHideTransform)
 
 if __name__ == "__main__":
