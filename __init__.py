@@ -1,4 +1,59 @@
 import bpy
+from bpy.app.handlers import persistent
+
+# ------------------------------------------------------------------------
+#    Helpers: Shared Hide/Restore Logic
+# ------------------------------------------------------------------------
+
+def apply_hide(scene, overlay):
+    """
+    Hides overlays based on scene settings.
+    Returns: (restore_data, restore_global)
+    """
+    restore_data = {}
+    restore_global = False
+
+    if scene.auto_hide_strategy == 'ALL':
+        restore_global = True
+        restore_data["show_overlays"] = overlay.show_overlays
+        overlay.show_overlays = False
+        
+    elif scene.auto_hide_strategy == 'CUSTOM':
+        restore_global = False
+        
+        # Define mapping: (Scene Property, Overlay Attribute)
+        properties_to_check = [
+            ("auto_hide_bones", "show_bones"),
+            ("auto_hide_wireframes", "show_wireframes"),
+            ("auto_hide_extras", "show_extras"),
+            ("auto_hide_text", "show_text"),
+            ("auto_hide_cursor", "show_cursor"),
+            ("auto_hide_relationship_lines", "show_relationship_lines"),
+        ]
+        
+        for scene_prop, overlay_attr in properties_to_check:
+            # If user wants to hide this specific element
+            if getattr(scene, scene_prop, False):
+                # Check if the overlay has this attribute (safety for different Blender versions/contexts)
+                if hasattr(overlay, overlay_attr):
+                    # Store current state
+                    restore_data[overlay_attr] = getattr(overlay, overlay_attr)
+                    # Turn it off
+                    setattr(overlay, overlay_attr, False)
+                    
+    return restore_data, restore_global
+
+def apply_restore(overlay, restore_data, restore_global):
+    """
+    Restores overlays from the saved data.
+    """
+    if restore_global:
+        if "show_overlays" in restore_data:
+            overlay.show_overlays = restore_data["show_overlays"]
+    else:
+        for attr, val in restore_data.items():
+            if hasattr(overlay, attr):
+                setattr(overlay, attr, val)
 
 # ------------------------------------------------------------------------
 #    Operator: Auto Hide Overlays Transform Wrapper
@@ -23,8 +78,8 @@ class OT_AutoHideTransform(bpy.types.Operator):
 
     # Internal state variables
     _space_data = None
-    _restore_data = {} # Dictionary to store {attribute_name: original_value}
-    _restore_global = False # Flag to know if we restored global overlay or specific props
+    _restore_data = {} 
+    _restore_global = False 
 
     def execute_transform(self):
         """Helper to call the native transform operator."""
@@ -46,18 +101,7 @@ class OT_AutoHideTransform(bpy.types.Operator):
             # Restore the overlay state
             if self._space_data:
                 overlay = self._space_data.overlay
-                
-                # Restore Global State
-                if self._restore_global:
-                    if "show_overlays" in self._restore_data:
-                        overlay.show_overlays = self._restore_data["show_overlays"]
-                
-                # Restore Custom States
-                else:
-                    for attr, val in self._restore_data.items():
-                        # Safety check: ensure attribute still exists
-                        if hasattr(overlay, attr):
-                            setattr(overlay, attr, val)
+                apply_restore(overlay, self._restore_data, self._restore_global)
             
             return {'FINISHED', 'PASS_THROUGH'}
         
@@ -74,37 +118,11 @@ class OT_AutoHideTransform(bpy.types.Operator):
         # 2. Ensure we are in a 3D View
         if context.space_data.type == 'VIEW_3D':
             self._space_data = context.space_data
-            self._restore_data = {}
-            overlay = self._space_data.overlay
             
-            # 3. Determine Hiding Strategy
-            if scene.auto_hide_strategy == 'ALL':
-                self._restore_global = True
-                self._restore_data["show_overlays"] = overlay.show_overlays
-                overlay.show_overlays = False
-                
-            elif scene.auto_hide_strategy == 'CUSTOM':
-                self._restore_global = False
-                
-                # Define mapping: (Scene Property, Overlay Attribute)
-                properties_to_check = [
-                    ("auto_hide_bones", "show_bones"),
-                    ("auto_hide_wireframes", "show_wireframes"),
-                    ("auto_hide_extras", "show_extras"),
-                    ("auto_hide_text", "show_text"),
-                    ("auto_hide_cursor", "show_cursor"),
-                    ("auto_hide_relationship_lines", "show_relationship_lines"),
-                ]
-                
-                for scene_prop, overlay_attr in properties_to_check:
-                    # If user wants to hide this specific element
-                    if getattr(scene, scene_prop, False):
-                        # Check if the overlay has this attribute (safety for different Blender versions/contexts)
-                        if hasattr(overlay, overlay_attr):
-                            # Store current state
-                            self._restore_data[overlay_attr] = getattr(overlay, overlay_attr)
-                            # Turn it off
-                            setattr(overlay, overlay_attr, False)
+            # 3. Apply Hide Strategy (Shared Logic)
+            overlay = self._space_data.overlay
+            self._restore_data, self._restore_global = apply_hide(scene, overlay)
+            
         else:
             self.report({'WARNING'}, "Not in View3D")
             return {'CANCELLED'}
@@ -117,6 +135,88 @@ class OT_AutoHideTransform(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 # ------------------------------------------------------------------------
+#    Handler: Auto Hide Playback
+# ------------------------------------------------------------------------
+
+# Global state to track playback hiding
+_playback_state = {
+    "active": False,
+    "views": []  # List of dicts: { 'overlay': obj, 'data': {}, 'global': bool }
+}
+
+def _hide_all_views(scene):
+    """Finds all visible 3D views and hides overlays."""
+    global _playback_state
+    
+    # Avoid double hiding
+    if _playback_state["active"]:
+        return
+
+    _playback_state["active"] = True
+    _playback_state["views"] = []
+    
+    # Iterate all windows and areas to find 3D Views
+    wm = bpy.context.window_manager
+    if not wm:
+        return
+
+    for window in wm.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                for space in area.spaces:
+                    if space.type == 'VIEW_3D':
+                        overlay = space.overlay
+                        # Apply hide and store restoration data
+                        r_data, r_global = apply_hide(scene, overlay)
+                        _playback_state["views"].append({
+                            "overlay": overlay,
+                            "data": r_data,
+                            "global": r_global
+                        })
+
+def _restore_all_views():
+    """Restores overlays on all tracked views."""
+    global _playback_state
+    
+    if not _playback_state["active"]:
+        return
+        
+    for view_record in _playback_state["views"]:
+        overlay = view_record["overlay"]
+        # Check if overlay is still valid (area might be closed)
+        try:
+            apply_restore(overlay, view_record["data"], view_record["global"])
+        except:
+            pass 
+            
+    # Reset State
+    _playback_state["active"] = False
+    _playback_state["views"] = []
+
+@persistent
+def on_playback_start(scene):
+    """Handler called when animation playback starts."""
+    # Ensure we have the correct scene context
+    target_scene = scene if isinstance(scene, bpy.types.Scene) else bpy.context.scene
+    
+    if getattr(target_scene, "auto_hide_playback", False):
+        _hide_all_views(target_scene)
+
+@persistent
+def on_playback_stop(scene):
+    """Handler called when animation playback stops."""
+    _restore_all_views()
+
+def update_auto_hide_playback(self, context):
+    """Callback for when the user toggles the property manually."""
+    # If the user toggles the checkbox WHILE animation is playing
+    if context.screen.is_animation_playing:
+        if self.auto_hide_playback:
+            _hide_all_views(context.scene)
+        else:
+            _restore_all_views()
+
+# ------------------------------------------------------------------------
 #    UI: Overlay Menu
 # ------------------------------------------------------------------------
 
@@ -127,12 +227,15 @@ def draw_overlay_menu(self, context):
     # Add a separator and our property at the bottom of the Overlay popover
     layout.separator()
     
-    # Main Toggle
-    row = layout.row()
-    row.prop(context.scene, "auto_hide_overlays", text="Auto Hide During Transform")
+    layout.label(text="Auto Hide Overlays")
+
+    # Main Toggles
+    col = layout.column(align=True)
+    col.prop(scene, "auto_hide_overlays", text="During Transform")
+    col.prop(scene, "auto_hide_playback", text="During Playback")
     
-    # Granular Options (only if enabled)
-    if scene.auto_hide_overlays:
+    # Granular Options (if either is enabled)
+    if scene.auto_hide_overlays or scene.auto_hide_playback:
         col = layout.column(align=True)
         # Strategy Selector
         col.row().prop(scene, "auto_hide_strategy", expand=True)
@@ -195,11 +298,18 @@ def unregister_keymaps():
 def register():
     bpy.utils.register_class(OT_AutoHideTransform)
     
-    # 1. Main Toggle
+    # 1. Main Toggles
     bpy.types.Scene.auto_hide_overlays = bpy.props.BoolProperty(
         name="Auto Hide During Transform",
         description="Hide viewport overlays while transforming (G/R/S)",
         default=False
+    )
+    
+    bpy.types.Scene.auto_hide_playback = bpy.props.BoolProperty(
+        name="Auto Hide During Playback",
+        description="Hide viewport overlays while animation is playing",
+        default=False,
+        update=update_auto_hide_playback
     )
     
     # 2. Strategy Enum
@@ -224,16 +334,27 @@ def register():
     # Add UI to Overlay Menu
     bpy.types.VIEW3D_PT_overlay.append(draw_overlay_menu)
     
+    # Register Playback Handlers
+    bpy.app.handlers.animation_playback_pre.append(on_playback_start)
+    bpy.app.handlers.animation_playback_post.append(on_playback_stop)
+    
     register_keymaps()
 
 def unregister():
     unregister_keymaps()
+    
+    # Remove Handlers
+    if on_playback_start in bpy.app.handlers.animation_playback_pre:
+        bpy.app.handlers.animation_playback_pre.remove(on_playback_start)
+    if on_playback_stop in bpy.app.handlers.animation_playback_post:
+        bpy.app.handlers.animation_playback_post.remove(on_playback_stop)
     
     # Remove UI
     bpy.types.VIEW3D_PT_overlay.remove(draw_overlay_menu)
     
     # Remove Properties
     del bpy.types.Scene.auto_hide_overlays
+    del bpy.types.Scene.auto_hide_playback
     del bpy.types.Scene.auto_hide_strategy
     del bpy.types.Scene.auto_hide_bones
     del bpy.types.Scene.auto_hide_wireframes
