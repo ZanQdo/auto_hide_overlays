@@ -26,6 +26,7 @@ def apply_hide(scene, overlay):
         properties_to_check = [
             ("bones", "show_bones"),
             ("wireframes", "show_wireframes"),
+            ("outline", "show_outline_selected"),
             ("extras", "show_extras"),
             ("origins", "show_object_origins"),
             ("origins", "show_object_origins_all"),
@@ -257,6 +258,7 @@ class AutoHideProperties(bpy.types.PropertyGroup):
     
     bones: bpy.props.BoolProperty(name="Hide Bones", default=True)
     wireframes: bpy.props.BoolProperty(name="Hide Wireframes", default=True)
+    outline: bpy.props.BoolProperty(name="Hide Outline", default=True)
     extras: bpy.props.BoolProperty(name="Hide Extras", default=True)
     origins: bpy.props.BoolProperty(name="Hide Origins", default=True)
     face_orientation: bpy.props.BoolProperty(name="Hide Face Orientation", default=True)
@@ -297,6 +299,7 @@ def draw_overlay_menu(self, context):
             col_box = box.column(align=True)
             col_box.prop(props, "bones", text="Bones")
             col_box.prop(props, "wireframes", text="Wireframes")
+            col_box.prop(props, "outline", text="Outline")
             col_box.prop(props, "extras", text="Extras")
             col_box.prop(props, "origins", text="Origins")
             col_box.prop(props, "face_orientation", text="Face Orientation")
