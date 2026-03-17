@@ -12,36 +12,37 @@ def apply_hide(scene, overlay):
     """
     restore_data = {}
     restore_global = False
+    props = scene.auto_hide
 
-    if scene.auto_hide_strategy == 'ALL':
+    if props.strategy == 'ALL':
         restore_global = True
         restore_data["show_overlays"] = overlay.show_overlays
         overlay.show_overlays = False
         
-    elif scene.auto_hide_strategy == 'CUSTOM':
+    elif props.strategy == 'CUSTOM':
         restore_global = False
         
-        # Define mapping: (Scene Property, Overlay Attribute)
+        # Define mapping: (PropertyGroup Attribute, Overlay Attribute)
         properties_to_check = [
-            ("auto_hide_bones", "show_bones"),
-            ("auto_hide_wireframes", "show_wireframes"),
-            ("auto_hide_extras", "show_extras"),
-            ("auto_hide_origins", "show_object_origins"),
-            ("auto_hide_origins", "show_object_origins_all"),
-            ("auto_hide_face_orientation", "show_face_orientation"),
-            ("auto_hide_text", "show_text"),
-            ("auto_hide_stats", "show_stats"),
-            ("auto_hide_cursor", "show_cursor"),
-            ("auto_hide_relationship_lines", "show_relationship_lines"),
-            ("auto_hide_floor", "show_floor"),
-            ("auto_hide_axes", "show_axis_x"),
-            ("auto_hide_axes", "show_axis_y"),
-            ("auto_hide_axes", "show_axis_z"),
+            ("bones", "show_bones"),
+            ("wireframes", "show_wireframes"),
+            ("extras", "show_extras"),
+            ("origins", "show_object_origins"),
+            ("origins", "show_object_origins_all"),
+            ("face_orientation", "show_face_orientation"),
+            ("text", "show_text"),
+            ("stats", "show_stats"),
+            ("cursor", "show_cursor"),
+            ("relationship_lines", "show_relationship_lines"),
+            ("floor", "show_floor"),
+            ("axes", "show_axis_x"),
+            ("axes", "show_axis_y"),
+            ("axes", "show_axis_z"),
         ]
         
-        for scene_prop, overlay_attr in properties_to_check:
+        for prop_name, overlay_attr in properties_to_check:
             # If user wants to hide this specific element
-            if getattr(scene, scene_prop, False):
+            if getattr(props, prop_name, False):
                 # Check if the overlay has this attribute (safety for different Blender versions/contexts)
                 if hasattr(overlay, overlay_attr):
                     # Store current state
@@ -118,7 +119,7 @@ class OT_AutoHideTransform(bpy.types.Operator):
     def invoke(self, context, event):
         # 1. Check if the feature is enabled in the UI
         scene = context.scene
-        if not scene.auto_hide_overlays:
+        if not scene.auto_hide.overlays:
             # Feature is disabled: Just run the normal transform and exit
             self.execute_transform()
             return {'FINISHED'}
@@ -207,7 +208,7 @@ def on_playback_start(scene):
     # Ensure we have the correct scene context
     target_scene = scene if isinstance(scene, bpy.types.Scene) else bpy.context.scene
     
-    if getattr(target_scene, "auto_hide_playback", False):
+    if getattr(target_scene.auto_hide, "playback", False):
         _hide_all_views(target_scene)
 
 @persistent
@@ -217,12 +218,54 @@ def on_playback_stop(scene):
 
 def update_auto_hide_playback(self, context):
     """Callback for when the user toggles the property manually."""
-    # If the user toggles the checkbox WHILE animation is playing
+    # self represents the AutoHideProperties instance here
     if context.screen.is_animation_playing:
-        if self.auto_hide_playback:
+        if self.playback:
             _hide_all_views(context.scene)
         else:
             _restore_all_views()
+
+# ------------------------------------------------------------------------
+#    Property Group (Bundled Properties)
+# ------------------------------------------------------------------------
+
+class AutoHideProperties(bpy.types.PropertyGroup):
+    """Property group for all Auto Hide settings"""
+    
+    overlays: bpy.props.BoolProperty(
+        name="Auto Hide During Transform",
+        description="Hide viewport overlays while transforming (G/R/S)",
+        default=False
+    )
+    
+    playback: bpy.props.BoolProperty(
+        name="Auto Hide During Playback",
+        description="Hide viewport overlays while animation is playing",
+        default=False,
+        update=update_auto_hide_playback
+    )
+    
+    strategy: bpy.props.EnumProperty(
+        name="Strategy",
+        description="Choose what to hide",
+        items=[
+            ('ALL', "Hide All", "Hide all overlays globally"),
+            ('CUSTOM', "Custom", "Hide specific overlay elements"),
+        ],
+        default='ALL'
+    )
+    
+    bones: bpy.props.BoolProperty(name="Hide Bones", default=True)
+    wireframes: bpy.props.BoolProperty(name="Hide Wireframes", default=True)
+    extras: bpy.props.BoolProperty(name="Hide Extras", default=True)
+    origins: bpy.props.BoolProperty(name="Hide Origins", default=True)
+    face_orientation: bpy.props.BoolProperty(name="Hide Face Orientation", default=True)
+    text: bpy.props.BoolProperty(name="Hide Text", default=True)
+    stats: bpy.props.BoolProperty(name="Hide Statistics", default=True)
+    cursor: bpy.props.BoolProperty(name="Hide Cursor", default=True)
+    relationship_lines: bpy.props.BoolProperty(name="Hide Relationships", default=True)
+    floor: bpy.props.BoolProperty(name="Hide Grid Floor", default=True)
+    axes: bpy.props.BoolProperty(name="Hide Axes", default=True)
 
 # ------------------------------------------------------------------------
 #    UI: Overlay Menu
@@ -230,7 +273,7 @@ def update_auto_hide_playback(self, context):
 
 def draw_overlay_menu(self, context):
     layout = self.layout
-    scene = context.scene
+    props = context.scene.auto_hide
     
     # Add a separator and our property at the bottom of the Overlay popover
     layout.separator()
@@ -239,30 +282,30 @@ def draw_overlay_menu(self, context):
 
     # Main Toggles
     col = layout.column(align=True)
-    col.prop(scene, "auto_hide_overlays", text="During Transform")
-    col.prop(scene, "auto_hide_playback", text="During Playback")
+    col.prop(props, "overlays", text="During Transform")
+    col.prop(props, "playback", text="During Playback")
     
     # Granular Options (if either is enabled)
-    if scene.auto_hide_overlays or scene.auto_hide_playback:
+    if props.overlays or props.playback:
         col = layout.column(align=True)
         # Strategy Selector
-        col.row().prop(scene, "auto_hide_strategy", expand=True)
+        col.row().prop(props, "strategy", expand=True)
         
         # Custom Checkboxes
-        if scene.auto_hide_strategy == 'CUSTOM':
+        if props.strategy == 'CUSTOM':
             box = col.box()
             col_box = box.column(align=True)
-            col_box.prop(scene, "auto_hide_bones", text="Bones")
-            col_box.prop(scene, "auto_hide_wireframes", text="Wireframes")
-            col_box.prop(scene, "auto_hide_extras", text="Extras")
-            col_box.prop(scene, "auto_hide_origins", text="Origins")
-            col_box.prop(scene, "auto_hide_face_orientation", text="Face Orientation")
-            col_box.prop(scene, "auto_hide_relationship_lines", text="Relationships")
-            col_box.prop(scene, "auto_hide_text", text="Text Info")
-            col_box.prop(scene, "auto_hide_stats", text="Statistics")
-            col_box.prop(scene, "auto_hide_cursor", text="3D Cursor")
-            col_box.prop(scene, "auto_hide_floor", text="Grid Floor")
-            col_box.prop(scene, "auto_hide_axes", text="Axes")
+            col_box.prop(props, "bones", text="Bones")
+            col_box.prop(props, "wireframes", text="Wireframes")
+            col_box.prop(props, "extras", text="Extras")
+            col_box.prop(props, "origins", text="Origins")
+            col_box.prop(props, "face_orientation", text="Face Orientation")
+            col_box.prop(props, "relationship_lines", text="Relationships")
+            col_box.prop(props, "text", text="Text Info")
+            col_box.prop(props, "stats", text="Statistics")
+            col_box.prop(props, "cursor", text="3D Cursor")
+            col_box.prop(props, "floor", text="Grid Floor")
+            col_box.prop(props, "axes", text="Axes")
 
 # ------------------------------------------------------------------------
 #    Keymap Registration
@@ -309,45 +352,12 @@ def unregister_keymaps():
 # ------------------------------------------------------------------------
 
 def register():
+    # Classes
     bpy.utils.register_class(OT_AutoHideTransform)
+    bpy.utils.register_class(AutoHideProperties)
     
-    # 1. Main Toggles
-    bpy.types.Scene.auto_hide_overlays = bpy.props.BoolProperty(
-        name="Auto Hide During Transform",
-        description="Hide viewport overlays while transforming (G/R/S)",
-        default=False
-    )
-    
-    bpy.types.Scene.auto_hide_playback = bpy.props.BoolProperty(
-        name="Auto Hide During Playback",
-        description="Hide viewport overlays while animation is playing",
-        default=False,
-        update=update_auto_hide_playback
-    )
-    
-    # 2. Strategy Enum
-    bpy.types.Scene.auto_hide_strategy = bpy.props.EnumProperty(
-        name="Strategy",
-        description="Choose what to hide",
-        items=[
-            ('ALL', "Hide All", "Hide all overlays globally"),
-            ('CUSTOM', "Custom", "Hide specific overlay elements"),
-        ],
-        default='ALL'
-    )
-    
-    # 3. Custom Granular Properties
-    bpy.types.Scene.auto_hide_bones = bpy.props.BoolProperty(name="Hide Bones", default=True)
-    bpy.types.Scene.auto_hide_wireframes = bpy.props.BoolProperty(name="Hide Wireframes", default=True)
-    bpy.types.Scene.auto_hide_extras = bpy.props.BoolProperty(name="Hide Extras", default=True)
-    bpy.types.Scene.auto_hide_origins = bpy.props.BoolProperty(name="Hide Origins", default=True)
-    bpy.types.Scene.auto_hide_face_orientation = bpy.props.BoolProperty(name="Hide Face Orientation", default=True)
-    bpy.types.Scene.auto_hide_text = bpy.props.BoolProperty(name="Hide Text", default=True)
-    bpy.types.Scene.auto_hide_stats = bpy.props.BoolProperty(name="Hide Statistics", default=True)
-    bpy.types.Scene.auto_hide_cursor = bpy.props.BoolProperty(name="Hide Cursor", default=True)
-    bpy.types.Scene.auto_hide_relationship_lines = bpy.props.BoolProperty(name="Hide Relationships", default=True)
-    bpy.types.Scene.auto_hide_floor = bpy.props.BoolProperty(name="Hide Grid Floor", default=True)
-    bpy.types.Scene.auto_hide_axes = bpy.props.BoolProperty(name="Hide Axes", default=True)
+    # Assign the PropertyGroup pointer to the Scene
+    bpy.types.Scene.auto_hide = bpy.props.PointerProperty(type=AutoHideProperties)
     
     # Add UI to Overlay Menu
     bpy.types.VIEW3D_PT_overlay.append(draw_overlay_menu)
@@ -370,22 +380,9 @@ def unregister():
     # Remove UI
     bpy.types.VIEW3D_PT_overlay.remove(draw_overlay_menu)
     
-    # Remove Properties
-    del bpy.types.Scene.auto_hide_overlays
-    del bpy.types.Scene.auto_hide_playback
-    del bpy.types.Scene.auto_hide_strategy
-    del bpy.types.Scene.auto_hide_bones
-    del bpy.types.Scene.auto_hide_wireframes
-    del bpy.types.Scene.auto_hide_extras
-    del bpy.types.Scene.auto_hide_origins
-    del bpy.types.Scene.auto_hide_face_orientation
-    del bpy.types.Scene.auto_hide_text
-    del bpy.types.Scene.auto_hide_stats
-    del bpy.types.Scene.auto_hide_cursor
-    del bpy.types.Scene.auto_hide_relationship_lines
-    del bpy.types.Scene.auto_hide_floor
-    del bpy.types.Scene.auto_hide_axes
-    
+    # Remove the PropertyGroup pointer and Class
+    del bpy.types.Scene.auto_hide
+    bpy.utils.unregister_class(AutoHideProperties)
     bpy.utils.unregister_class(OT_AutoHideTransform)
 
 if __name__ == "__main__":
