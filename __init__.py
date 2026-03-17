@@ -29,6 +29,10 @@ def apply_hide(scene, overlay):
             ("auto_hide_text", "show_text"),
             ("auto_hide_cursor", "show_cursor"),
             ("auto_hide_relationship_lines", "show_relationship_lines"),
+            ("auto_hide_floor", "show_floor"),
+            ("auto_hide_axes", "show_axis_x"),
+            ("auto_hide_axes", "show_axis_y"),
+            ("auto_hide_axes", "show_axis_z"),
         ]
         
         for scene_prop, overlay_attr in properties_to_check:
@@ -250,6 +254,8 @@ def draw_overlay_menu(self, context):
             col_box.prop(scene, "auto_hide_relationship_lines", text="Relationships")
             col_box.prop(scene, "auto_hide_text", text="Text Info")
             col_box.prop(scene, "auto_hide_cursor", text="3D Cursor")
+            col_box.prop(scene, "auto_hide_floor", text="Grid Floor")
+            col_box.prop(scene, "auto_hide_axes", text="Axes")
 
 # ------------------------------------------------------------------------
 #    Keymap Registration
@@ -330,6 +336,8 @@ def register():
     bpy.types.Scene.auto_hide_text = bpy.props.BoolProperty(name="Hide Text", default=False)
     bpy.types.Scene.auto_hide_cursor = bpy.props.BoolProperty(name="Hide Cursor", default=False)
     bpy.types.Scene.auto_hide_relationship_lines = bpy.props.BoolProperty(name="Hide Relationships", default=False)
+    bpy.types.Scene.auto_hide_floor = bpy.props.BoolProperty(name="Hide Grid Floor", default=True)
+    bpy.types.Scene.auto_hide_axes = bpy.props.BoolProperty(name="Hide Axes", default=True)
     
     # Add UI to Overlay Menu
     bpy.types.VIEW3D_PT_overlay.append(draw_overlay_menu)
@@ -362,6 +370,8 @@ def unregister():
     del bpy.types.Scene.auto_hide_text
     del bpy.types.Scene.auto_hide_cursor
     del bpy.types.Scene.auto_hide_relationship_lines
+    del bpy.types.Scene.auto_hide_floor
+    del bpy.types.Scene.auto_hide_axes
     
     bpy.utils.unregister_class(OT_AutoHideTransform)
 
