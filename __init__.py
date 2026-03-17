@@ -28,7 +28,9 @@ def apply_hide(scene, overlay):
             ("auto_hide_extras", "show_extras"),
             ("auto_hide_origins", "show_object_origins"),
             ("auto_hide_origins", "show_object_origins_all"),
+            ("auto_hide_face_orientation", "show_face_orientation"),
             ("auto_hide_text", "show_text"),
+            ("auto_hide_stats", "show_stats"),
             ("auto_hide_cursor", "show_cursor"),
             ("auto_hide_relationship_lines", "show_relationship_lines"),
             ("auto_hide_floor", "show_floor"),
@@ -254,8 +256,10 @@ def draw_overlay_menu(self, context):
             col_box.prop(scene, "auto_hide_wireframes", text="Wireframes")
             col_box.prop(scene, "auto_hide_extras", text="Extras")
             col_box.prop(scene, "auto_hide_origins", text="Origins")
+            col_box.prop(scene, "auto_hide_face_orientation", text="Face Orientation")
             col_box.prop(scene, "auto_hide_relationship_lines", text="Relationships")
             col_box.prop(scene, "auto_hide_text", text="Text Info")
+            col_box.prop(scene, "auto_hide_stats", text="Statistics")
             col_box.prop(scene, "auto_hide_cursor", text="3D Cursor")
             col_box.prop(scene, "auto_hide_floor", text="Grid Floor")
             col_box.prop(scene, "auto_hide_axes", text="Axes")
@@ -337,7 +341,9 @@ def register():
     bpy.types.Scene.auto_hide_wireframes = bpy.props.BoolProperty(name="Hide Wireframes", default=True)
     bpy.types.Scene.auto_hide_extras = bpy.props.BoolProperty(name="Hide Extras", default=True)
     bpy.types.Scene.auto_hide_origins = bpy.props.BoolProperty(name="Hide Origins", default=True)
+    bpy.types.Scene.auto_hide_face_orientation = bpy.props.BoolProperty(name="Hide Face Orientation", default=True)
     bpy.types.Scene.auto_hide_text = bpy.props.BoolProperty(name="Hide Text", default=True)
+    bpy.types.Scene.auto_hide_stats = bpy.props.BoolProperty(name="Hide Statistics", default=True)
     bpy.types.Scene.auto_hide_cursor = bpy.props.BoolProperty(name="Hide Cursor", default=True)
     bpy.types.Scene.auto_hide_relationship_lines = bpy.props.BoolProperty(name="Hide Relationships", default=True)
     bpy.types.Scene.auto_hide_floor = bpy.props.BoolProperty(name="Hide Grid Floor", default=True)
@@ -372,7 +378,9 @@ def unregister():
     del bpy.types.Scene.auto_hide_wireframes
     del bpy.types.Scene.auto_hide_extras
     del bpy.types.Scene.auto_hide_origins
+    del bpy.types.Scene.auto_hide_face_orientation
     del bpy.types.Scene.auto_hide_text
+    del bpy.types.Scene.auto_hide_stats
     del bpy.types.Scene.auto_hide_cursor
     del bpy.types.Scene.auto_hide_relationship_lines
     del bpy.types.Scene.auto_hide_floor
