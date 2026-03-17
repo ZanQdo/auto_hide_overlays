@@ -333,9 +333,9 @@ def register():
     bpy.types.Scene.auto_hide_bones = bpy.props.BoolProperty(name="Hide Bones", default=True)
     bpy.types.Scene.auto_hide_wireframes = bpy.props.BoolProperty(name="Hide Wireframes", default=True)
     bpy.types.Scene.auto_hide_extras = bpy.props.BoolProperty(name="Hide Extras", default=True)
-    bpy.types.Scene.auto_hide_text = bpy.props.BoolProperty(name="Hide Text", default=False)
-    bpy.types.Scene.auto_hide_cursor = bpy.props.BoolProperty(name="Hide Cursor", default=False)
-    bpy.types.Scene.auto_hide_relationship_lines = bpy.props.BoolProperty(name="Hide Relationships", default=False)
+    bpy.types.Scene.auto_hide_text = bpy.props.BoolProperty(name="Hide Text", default=True)
+    bpy.types.Scene.auto_hide_cursor = bpy.props.BoolProperty(name="Hide Cursor", default=True)
+    bpy.types.Scene.auto_hide_relationship_lines = bpy.props.BoolProperty(name="Hide Relationships", default=True)
     bpy.types.Scene.auto_hide_floor = bpy.props.BoolProperty(name="Hide Grid Floor", default=True)
     bpy.types.Scene.auto_hide_axes = bpy.props.BoolProperty(name="Hide Axes", default=True)
     
