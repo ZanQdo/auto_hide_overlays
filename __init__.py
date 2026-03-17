@@ -26,6 +26,8 @@ def apply_hide(scene, overlay):
             ("auto_hide_bones", "show_bones"),
             ("auto_hide_wireframes", "show_wireframes"),
             ("auto_hide_extras", "show_extras"),
+            ("auto_hide_origins", "show_object_origins"),
+            ("auto_hide_origins", "show_object_origins_all"),
             ("auto_hide_text", "show_text"),
             ("auto_hide_cursor", "show_cursor"),
             ("auto_hide_relationship_lines", "show_relationship_lines"),
@@ -251,6 +253,7 @@ def draw_overlay_menu(self, context):
             col_box.prop(scene, "auto_hide_bones", text="Bones")
             col_box.prop(scene, "auto_hide_wireframes", text="Wireframes")
             col_box.prop(scene, "auto_hide_extras", text="Extras")
+            col_box.prop(scene, "auto_hide_origins", text="Origins")
             col_box.prop(scene, "auto_hide_relationship_lines", text="Relationships")
             col_box.prop(scene, "auto_hide_text", text="Text Info")
             col_box.prop(scene, "auto_hide_cursor", text="3D Cursor")
@@ -333,6 +336,7 @@ def register():
     bpy.types.Scene.auto_hide_bones = bpy.props.BoolProperty(name="Hide Bones", default=True)
     bpy.types.Scene.auto_hide_wireframes = bpy.props.BoolProperty(name="Hide Wireframes", default=True)
     bpy.types.Scene.auto_hide_extras = bpy.props.BoolProperty(name="Hide Extras", default=True)
+    bpy.types.Scene.auto_hide_origins = bpy.props.BoolProperty(name="Hide Origins", default=True)
     bpy.types.Scene.auto_hide_text = bpy.props.BoolProperty(name="Hide Text", default=True)
     bpy.types.Scene.auto_hide_cursor = bpy.props.BoolProperty(name="Hide Cursor", default=True)
     bpy.types.Scene.auto_hide_relationship_lines = bpy.props.BoolProperty(name="Hide Relationships", default=True)
@@ -367,6 +371,7 @@ def unregister():
     del bpy.types.Scene.auto_hide_bones
     del bpy.types.Scene.auto_hide_wireframes
     del bpy.types.Scene.auto_hide_extras
+    del bpy.types.Scene.auto_hide_origins
     del bpy.types.Scene.auto_hide_text
     del bpy.types.Scene.auto_hide_cursor
     del bpy.types.Scene.auto_hide_relationship_lines
