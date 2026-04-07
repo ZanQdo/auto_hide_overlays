@@ -7,7 +7,7 @@ tagline = "Hides overlays during transform"
 maintainer = "Daniel Salazar"
 type = "add-on"
 
-website = "https://www.patazanimation.com/"
+website = "http://blenderaddon.com/"
 
 tags = ["Animation"]
 
