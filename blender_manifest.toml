@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 id = "pataz_auto_hide_overlays"
 version = "5.2.0"
 name = "Pataz Auto Hide Overlays"
-tagline = "Hides overlays during transform"
+tagline = "Hides overlays during transform or playback"
 maintainer = "Daniel Salazar"
 type = "add-on"
 
