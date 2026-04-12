@@ -1,4 +1,5 @@
 import bpy
+import rna_keymap_ui
 from bpy.app.handlers import persistent
 
 # ------------------------------------------------------------------------
@@ -270,6 +271,58 @@ class AutoHideProperties(bpy.types.PropertyGroup):
     axes: bpy.props.BoolProperty(name="Hide Axes", default=True)
 
 # ------------------------------------------------------------------------
+#    Addon Preferences
+# ------------------------------------------------------------------------
+
+class AutoHidePreferences(bpy.types.AddonPreferences):
+    """Preferences for the Auto Hide Addon to customize hotkeys"""
+    # Uses the package name to handle both single-file and multi-file structures
+    bl_idname = __package__ if __package__ else __name__
+
+    def draw(self, context):
+        layout = self.layout
+        
+        wm = context.window_manager
+        kc = wm.keyconfigs.user
+        
+        if not kc:
+            layout.label(text="Keymap config not available.")
+            return
+            
+        # Group keymaps by their context (e.g., 'Object Mode', 'Pose')
+        km_dict = {}
+        for km, kmi in addon_keymaps:
+            if km.name not in km_dict:
+                km_dict[km.name] = []
+            km_dict[km.name].append((km, kmi))
+        
+        # Map internal modes to friendly labels
+        mode_labels = {
+            'TRANSLATE': "Translate (Move)",
+            'ROTATE': "Rotate",
+            'RESIZE': "Scale"
+        }
+            
+        # Display each group separately with distinct labels
+        for km_name, items in km_dict.items():
+            box = layout.box()
+            box.label(text=f"Context: {km_name}", icon='KEYINGSET')
+            
+            for km, kmi in items:
+                mode = kmi.properties.mode
+                display_name = mode_labels.get(mode, mode.title())
+                
+                # Visual block for each hotkey type
+                col = box.column(align=True)
+                col.label(text=display_name)
+                
+                col.context_pointer_set("keymap", km)
+                rna_keymap_ui.draw_kmi(
+                    ["ADDON", "USER", "DEFAULT"], kc, km, kmi, col, 0
+                )
+                box.separator()
+
+# ------------------------------------------------------------------------
 #    UI: Overlay Menu
 # ------------------------------------------------------------------------
 
@@ -358,6 +411,7 @@ def register():
     # Classes
     bpy.utils.register_class(OT_AutoHideTransform)
     bpy.utils.register_class(AutoHideProperties)
+    bpy.utils.register_class(AutoHidePreferences)
     
     # Assign the PropertyGroup pointer to the Scene
     bpy.types.Scene.auto_hide = bpy.props.PointerProperty(type=AutoHideProperties)
@@ -383,8 +437,9 @@ def unregister():
     # Remove UI
     bpy.types.VIEW3D_PT_overlay.remove(draw_overlay_menu)
     
-    # Remove the PropertyGroup pointer and Class
+    # Remove the PropertyGroup pointer and Classes
     del bpy.types.Scene.auto_hide
+    bpy.utils.unregister_class(AutoHidePreferences)
     bpy.utils.unregister_class(AutoHideProperties)
     bpy.utils.unregister_class(OT_AutoHideTransform)
 
