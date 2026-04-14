@@ -282,6 +282,14 @@ class AutoHidePreferences(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
         
+        # Instructions Explaining Key Configurations
+        box = layout.box()
+        box.label(text="Transform Shortcut Overrides", icon='INFO')
+        box.label(text="To hide overlays during transforms, this add-on intercepts the Move, Rotate, and Scale tools.")
+        box.label(text="If you use custom hotkeys for these tools, please update the mappings below to match them.")
+        
+        layout.separator()
+        
         wm = context.window_manager
         kc = wm.keyconfigs.user
         
