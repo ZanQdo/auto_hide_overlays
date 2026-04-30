@@ -118,9 +118,9 @@ class OT_AutoHideTransform(bpy.types.Operator):
                 # Restore panels
                 if self._restore_panel_data:
                     try:
-                        if "show_region_ui" in self._restore_panel_data:
+                        if "show_region_ui" in self._restore_panel_data and self._space_data.show_region_ui != self._restore_panel_data["show_region_ui"]:
                             self._space_data.show_region_ui = self._restore_panel_data["show_region_ui"]
-                        if "show_region_toolbar" in self._restore_panel_data:
+                        if "show_region_toolbar" in self._restore_panel_data and self._space_data.show_region_toolbar != self._restore_panel_data["show_region_toolbar"]:
                             self._space_data.show_region_toolbar = self._restore_panel_data["show_region_toolbar"]
                     except (AttributeError, TypeError, ValueError, ReferenceError):
                         pass
@@ -155,8 +155,10 @@ class OT_AutoHideTransform(bpy.types.Operator):
             if scene.auto_hide.transform_panels:
                 self._restore_panel_data["show_region_ui"] = self._space_data.show_region_ui
                 self._restore_panel_data["show_region_toolbar"] = self._space_data.show_region_toolbar
-                self._space_data.show_region_ui = False
-                self._space_data.show_region_toolbar = False
+                if self._space_data.show_region_ui:
+                    self._space_data.show_region_ui = False
+                if self._space_data.show_region_toolbar:
+                    self._space_data.show_region_toolbar = False
             
         else:
             self.report({'WARNING'}, "Not in View3D")
@@ -220,8 +222,10 @@ def _hide_all_views(scene):
                         if hide_panels:
                             view_record["panel_data"]["show_region_ui"] = space.show_region_ui
                             view_record["panel_data"]["show_region_toolbar"] = space.show_region_toolbar
-                            space.show_region_ui = False
-                            space.show_region_toolbar = False
+                            if space.show_region_ui:
+                                space.show_region_ui = False
+                            if space.show_region_toolbar:
+                                space.show_region_toolbar = False
                             
                         _playback_state["views"].append(view_record)
 
@@ -246,9 +250,9 @@ def _restore_all_views():
         panel_data = view_record.get("panel_data", {})
         if space and panel_data:
             try:
-                if "show_region_ui" in panel_data:
+                if "show_region_ui" in panel_data and space.show_region_ui != panel_data["show_region_ui"]:
                     space.show_region_ui = panel_data["show_region_ui"]
-                if "show_region_toolbar" in panel_data:
+                if "show_region_toolbar" in panel_data and space.show_region_toolbar != panel_data["show_region_toolbar"]:
                     space.show_region_toolbar = panel_data["show_region_toolbar"]
             except (AttributeError, TypeError, ValueError, ReferenceError):
                 pass
