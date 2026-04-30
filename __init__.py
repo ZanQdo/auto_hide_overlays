@@ -91,6 +91,7 @@ class OT_AutoHideTransform(bpy.types.Operator):
     _space_data = None
     _restore_data = {} 
     _restore_global = False 
+    _restore_panel_data = {}
 
     def execute_transform(self):
         """Helper to call the native transform operator."""
@@ -113,15 +114,30 @@ class OT_AutoHideTransform(bpy.types.Operator):
             if self._space_data:
                 overlay = self._space_data.overlay
                 apply_restore(overlay, self._restore_data, self._restore_global)
+                
+                # Restore panels
+                if self._restore_panel_data:
+                    try:
+                        if "show_region_ui" in self._restore_panel_data:
+                            self._space_data.show_region_ui = self._restore_panel_data["show_region_ui"]
+                        if "show_region_toolbar" in self._restore_panel_data:
+                            self._space_data.show_region_toolbar = self._restore_panel_data["show_region_toolbar"]
+                    except (AttributeError, TypeError, ValueError, ReferenceError):
+                        pass
             
             return {'FINISHED', 'PASS_THROUGH'}
         
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
+        # Reset states for this execution
+        self._restore_data = {}
+        self._restore_global = False
+        self._restore_panel_data = {}
+
         # 1. Check if the feature is enabled in the UI
         scene = context.scene
-        if not scene.auto_hide.overlays:
+        if not (scene.auto_hide.overlays or scene.auto_hide.transform_panels):
             # Feature is disabled: Just run the normal transform and exit
             self.execute_transform()
             return {'FINISHED'}
@@ -130,9 +146,17 @@ class OT_AutoHideTransform(bpy.types.Operator):
         if context.space_data.type == 'VIEW_3D':
             self._space_data = context.space_data
             
-            # 3. Apply Hide Strategy (Shared Logic)
-            overlay = self._space_data.overlay
-            self._restore_data, self._restore_global = apply_hide(scene, overlay)
+            # 3. Apply Hide Strategy
+            if scene.auto_hide.overlays:
+                overlay = self._space_data.overlay
+                self._restore_data, self._restore_global = apply_hide(scene, overlay)
+            
+            # Apply Panel Hide Strategy
+            if scene.auto_hide.transform_panels:
+                self._restore_panel_data["show_region_ui"] = self._space_data.show_region_ui
+                self._restore_panel_data["show_region_toolbar"] = self._space_data.show_region_toolbar
+                self._space_data.show_region_ui = False
+                self._space_data.show_region_toolbar = False
             
         else:
             self.report({'WARNING'}, "Not in View3D")
@@ -270,6 +294,12 @@ class AutoHideProperties(bpy.types.PropertyGroup):
         default=False
     )
     
+    transform_panels: bpy.props.BoolProperty(
+        name="Hide Sidebar/Toolbar During Transform",
+        description="Hide Toolbar and Sidebar panels while transforming",
+        default=False
+    )
+    
     playback: bpy.props.BoolProperty(
         name="Hide Overlays",
         description="Hide viewport overlays while animation is playing",
@@ -278,8 +308,8 @@ class AutoHideProperties(bpy.types.PropertyGroup):
     )
     
     playback_panels: bpy.props.BoolProperty(
-        name="Hide N/T Panels",
-        description="Hide Tools (T) and Sidebar (N) panels while animation is playing",
+        name="Hide Sidebar/Toolbar",
+        description="Hide Toolbar and Sidebar panels while animation is playing",
         default=False,
         update=update_auto_hide_playback
     )
@@ -376,9 +406,14 @@ def draw_overlay_menu(self, context):
 
     # Main Toggles
     col = layout.column(align=True)
-    col.prop(props, "overlays", text="Overlays During Transform")
-    col.prop(props, "playback", text="Overlays During Playback")
-    col.prop(props, "playback_panels", text="Panels During Playback")
+    col.label(text="Transform:")
+    col.prop(props, "overlays", text="Hide Overlays")
+    col.prop(props, "transform_panels", text="Hide Sidebar/Toolbar")
+    
+    col.separator()
+    col.label(text="Playback:")
+    col.prop(props, "playback", text="Hide Overlays")
+    col.prop(props, "playback_panels", text="Hide Sidebar/Toolbar")
     
     # Granular Options (if either overlay auto-hiding is enabled)
     if props.overlays or props.playback:
