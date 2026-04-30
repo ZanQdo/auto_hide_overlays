@@ -152,11 +152,11 @@ class OT_AutoHideTransform(bpy.types.Operator):
 # Global state to track playback hiding
 _playback_state = {
     "active": False,
-    "views": []  # List of dicts: { 'overlay': obj, 'data': {}, 'global': bool }
+    "views": []  # List of dicts with space/overlay details
 }
 
 def _hide_all_views(scene):
-    """Finds all visible 3D views and hides overlays."""
+    """Finds all visible 3D views and hides requested elements."""
     global _playback_state
     
     # Avoid double hiding
@@ -166,40 +166,69 @@ def _hide_all_views(scene):
     _playback_state["active"] = True
     _playback_state["views"] = []
     
-    # Iterate all windows and areas to find 3D Views
     wm = bpy.context.window_manager
     if not wm:
         return
+
+    hide_overlays = getattr(scene.auto_hide, "playback", False)
+    hide_panels = getattr(scene.auto_hide, "playback_panels", False)
 
     for window in wm.windows:
         for area in window.screen.areas:
             if area.type == 'VIEW_3D':
                 for space in area.spaces:
                     if space.type == 'VIEW_3D':
-                        overlay = space.overlay
-                        # Apply hide and store restoration data
-                        r_data, r_global = apply_hide(scene, overlay)
-                        _playback_state["views"].append({
-                            "overlay": overlay,
-                            "data": r_data,
-                            "global": r_global
-                        })
+                        view_record = {
+                            "space": space,
+                            "overlay": space.overlay,
+                            "data": {},
+                            "global": False,
+                            "panel_data": {}
+                        }
+                        
+                        # Apply Overlay Hide
+                        if hide_overlays:
+                            r_data, r_global = apply_hide(scene, space.overlay)
+                            view_record["data"] = r_data
+                            view_record["global"] = r_global
+                            
+                        # Apply Panel Hide
+                        if hide_panels:
+                            view_record["panel_data"]["show_region_ui"] = space.show_region_ui
+                            view_record["panel_data"]["show_region_toolbar"] = space.show_region_toolbar
+                            space.show_region_ui = False
+                            space.show_region_toolbar = False
+                            
+                        _playback_state["views"].append(view_record)
 
 def _restore_all_views():
-    """Restores overlays on all tracked views."""
+    """Restores overlays and panels on all tracked views."""
     global _playback_state
     
     if not _playback_state["active"]:
         return
         
     for view_record in _playback_state["views"]:
+        # 1. Restore Overlays
         overlay = view_record["overlay"]
-        # Check if overlay is still valid (area might be closed)
         try:
-            apply_restore(overlay, view_record["data"], view_record["global"])
-        except:
+            if view_record["data"] or view_record["global"]:
+                apply_restore(overlay, view_record["data"], view_record["global"])
+        except (AttributeError, TypeError, ValueError, ReferenceError):
             pass 
             
+        # 2. Restore Panels
+        space = view_record.get("space")
+        panel_data = view_record.get("panel_data", {})
+        if space and panel_data:
+            try:
+                if "show_region_ui" in panel_data:
+                    space.show_region_ui = panel_data["show_region_ui"]
+                if "show_region_toolbar" in panel_data:
+                    space.show_region_toolbar = panel_data["show_region_toolbar"]
+            except (AttributeError, TypeError, ValueError, ReferenceError):
+                pass
+
     # Reset State
     _playback_state["active"] = False
     _playback_state["views"] = []
@@ -207,10 +236,10 @@ def _restore_all_views():
 @persistent
 def on_playback_start(scene):
     """Handler called when animation playback starts."""
-    # Ensure we have the correct scene context
     target_scene = scene if isinstance(scene, bpy.types.Scene) else bpy.context.scene
+    auto_hide = target_scene.auto_hide
     
-    if getattr(target_scene.auto_hide, "playback", False):
+    if auto_hide.playback or auto_hide.playback_panels:
         _hide_all_views(target_scene)
 
 @persistent
@@ -220,12 +249,13 @@ def on_playback_stop(scene):
 
 def update_auto_hide_playback(self, context):
     """Callback for when the user toggles the property manually."""
-    # self represents the AutoHideProperties instance here
     if context.screen.is_animation_playing:
-        if self.playback:
+        # Re-initialize to ensure newly enabled items are hidden immediately
+        _restore_all_views()
+        if self.playback or self.playback_panels:
             _hide_all_views(context.scene)
-        else:
-            _restore_all_views()
+    else:
+        _restore_all_views()
 
 # ------------------------------------------------------------------------
 #    Property Group (Bundled Properties)
@@ -241,8 +271,15 @@ class AutoHideProperties(bpy.types.PropertyGroup):
     )
     
     playback: bpy.props.BoolProperty(
-        name="Auto Hide During Playback",
+        name="Hide Overlays",
         description="Hide viewport overlays while animation is playing",
+        default=False,
+        update=update_auto_hide_playback
+    )
+    
+    playback_panels: bpy.props.BoolProperty(
+        name="Hide N/T Panels",
+        description="Hide Tools (T) and Sidebar (N) panels while animation is playing",
         default=False,
         update=update_auto_hide_playback
     )
@@ -276,7 +313,6 @@ class AutoHideProperties(bpy.types.PropertyGroup):
 
 class AutoHidePreferences(bpy.types.AddonPreferences):
     """Preferences for the Auto Hide Addon to customize hotkeys"""
-    # Uses the package name to handle both single-file and multi-file structures
     bl_idname = __package__ if __package__ else __name__
 
     def draw(self, context):
@@ -297,21 +333,19 @@ class AutoHidePreferences(bpy.types.AddonPreferences):
             layout.label(text="Keymap config not available.")
             return
             
-        # Group keymaps by their context (e.g., 'Object Mode', 'Pose')
+        # Group keymaps by their context
         km_dict = {}
         for km, kmi in addon_keymaps:
             if km.name not in km_dict:
                 km_dict[km.name] = []
             km_dict[km.name].append((km, kmi))
         
-        # Map internal modes to friendly labels
         mode_labels = {
             'TRANSLATE': "Translate (Move)",
             'ROTATE': "Rotate",
             'RESIZE': "Scale"
         }
             
-        # Display each group separately with distinct labels
         for km_name, items in km_dict.items():
             box = layout.box()
             box.label(text=f"Context: {km_name}", icon='KEYINGSET')
@@ -320,7 +354,6 @@ class AutoHidePreferences(bpy.types.AddonPreferences):
                 mode = kmi.properties.mode
                 display_name = mode_labels.get(mode, mode.title())
                 
-                # Visual block for each hotkey type
                 col = box.column(align=True)
                 col.label(text=display_name)
                 
@@ -338,18 +371,18 @@ def draw_overlay_menu(self, context):
     layout = self.layout
     props = context.scene.auto_hide
     
-    # Add a separator and our property at the bottom of the Overlay popover
     layout.separator()
-    
-    layout.label(text="Auto Hide Overlays")
+    layout.label(text="Auto Hide Properties")
 
     # Main Toggles
     col = layout.column(align=True)
-    col.prop(props, "overlays", text="During Transform")
-    col.prop(props, "playback", text="During Playback")
+    col.prop(props, "overlays", text="Overlays During Transform")
+    col.prop(props, "playback", text="Overlays During Playback")
+    col.prop(props, "playback_panels", text="Panels During Playback")
     
-    # Granular Options (if either is enabled)
+    # Granular Options (if either overlay auto-hiding is enabled)
     if props.overlays or props.playback:
+        col.separator()
         col = layout.column(align=True)
         # Strategy Selector
         col.row().prop(props, "strategy", expand=True)
@@ -383,7 +416,6 @@ def register_keymaps():
     if not kc:
         return
 
-    # Helper to add keymap items
     def add_km(km_name, space_type):
         km = kc.keymaps.new(name=km_name, space_type=space_type)
         
@@ -402,7 +434,6 @@ def register_keymaps():
         kmi.properties.mode = 'RESIZE'
         addon_keymaps.append((km, kmi))
 
-    # Register for Object Mode and Pose Mode
     add_km('Object Mode', 'EMPTY')
     add_km('Pose', 'EMPTY')
 
